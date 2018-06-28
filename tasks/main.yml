@@ -1,0 +1,126 @@
+---
+# tasks file for asterisk-build
+- include: "{{ ansible_os_family }}.yml"
+
+- name: Determine latest version of Asterisk
+  shell: curl -s http://downloads.asterisk.org/pub/telephony/asterisk/|grep "asterisk-{{asterisk_version}}\."|sed -E "s/.*({{asterisk_version}}\.[0-9]+\.[0-9]+).*/\1/g"|sort -n|uniq
+  register: asterisk_latest
+  args:
+    warn: False
+  tags: latest
+
+- name: Echo latest version of Asterisk
+  debug:
+    msg: Latest version of {{ asterisk_version }} is {{ asterisk_latest.stdout }}
+  tags: debug
+
+- name: Unpack Asterisk
+  unarchive:
+    src: http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ asterisk_version }}-current.tar.gz
+    dest: /usr/local/src
+    remote_src: yes
+    creates: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+  tags: unpack
+
+- name: Install mp3 source
+  command: contrib/scripts/get_mp3_source.sh
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+    creates: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}/addons/mp3/layer3.c
+
+- name: download iksemel
+  git:
+    repo: https://github.com/meduketto/iksemel.git
+    dest: /usr/local/src/iksemel
+  tags: iksemel
+
+- name: autogen iksemel
+  command: ./autogen.sh
+  args:
+    chdir: /usr/local/src/iksemel
+    creates: /usr/local/src/iksemel/config.guess
+  tags: iksemel
+
+- name: configure iksemel
+  command: ./configure --prefix=/usr
+  args:
+    chdir: /usr/local/src/iksemel
+    creates: /usr/local/src/iksemel/config.log
+  tags: iksemel
+
+- name: make iksemel
+  command: make
+  args:
+    chdir: /usr/local/src/iksemel
+    creates: /usr/local/src/iksemel/tools/ikslint.o
+  tags: iksemel
+
+- name: install iksemel
+  command: make install
+  args:
+    chdir: /usr/local/src/iksemel
+    creates: /usr/local/bin/ikslint
+  tags: iksemel
+
+- name: make menuconfig
+  command: make menuselect.makeopts
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+    creates: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}/funcs/.func_db.makeopts
+
+- name: configure mp3
+  command: menuselect/menuselect --enable format_mp3
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+
+- import_tasks: "{{ ansible_os_family }}.yml"
+
+- name: make asterisk
+  command: make
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+    creates: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}/main/asterisk
+
+- name:  install asterisk
+  command: make install
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+    creates: /sbin/asterisk
+
+- name: add asterisk group
+  group:
+    name: asterisk
+    state: present
+
+- name: add asterisk user
+  user:
+    name: asterisk
+    createhome: no
+    group: asterisk
+
+- name: install demo pbx config
+  command: make samples
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+  when: install_demo_pbx 
+
+- name: chown directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    recurse: yes
+    owner: "{{ asterisk_owner }}"
+    group: "{{ asterisk_group }}"
+  with_items:
+    - /etc/asterisk
+    - /var/spool/asterisk
+    - /var/lib/asterisk
+    - /var/run/asterisk
+    - /var/log/asterisk
+
+- name: enable and start service
+  service:
+    name: asterisk
+    enabled: yes
+    state: started
+  when: install_demo_pbx 

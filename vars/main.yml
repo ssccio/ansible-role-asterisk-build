@@ -1,0 +1,10 @@
+---
+# vars file for asterisk-build
+
+# Asterisk Version: 13, 14, or 15
+asterisk_version: 15
+
+asterisk_owner: asterisk
+asterisk_group: asterisk
+
+install_demo_pbx: True

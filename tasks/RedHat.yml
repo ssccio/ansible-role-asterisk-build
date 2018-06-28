@@ -1,0 +1,58 @@
+---
+# tasks file for asterisk-build
+- name: Install dependencies 
+  yum:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - "@Development tools"
+    - lua-devel
+    - python-devel
+    - libxml2-devel
+    - openssl-devel
+    - newt-devel
+    - texinfo
+    - sqlite-devel
+    - libuuid-devel
+    - gtk2-devel
+    - jansson-devel
+    - binutils-devel
+    - ncurses-devel
+    - unixODBC
+    - unixODBC-devel
+    - libtool-ltdl
+    - libtool-ltdl-devel
+  tags: dependencies
+
+- name: install mysql connector on RH6 or Amazon Linux
+  yum:
+    name: ftp://ftp.pbone.net/mirror/dev.mysql.com/pub/Downloads/Connector-ODBC/8.0/mysql-connector-odbc-8.0.11-1.el6.x86_64.rpm
+    state: present
+  when: ansible_distribution == 'Amazon' or ansible_distribution_version == '6'
+
+- name: install mysql connector on RH7
+  yum:
+    name: ftp://ftp.pbone.net/mirror/dev.mysql.com/pub/Downloads/Connector-ODBC/8.0/mysql-connector-odbc-8.0.11-1.el7.x86_64.rpm
+    state: present
+  when: ansible_distribution_version == '7'
+
+- name: Disable selinux 
+  lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: 'SELINUX=disabled'
+    backrefs: yes
+  tags: selinux
+
+- name: configure asterisk for Redhat systems
+  command: ./configure --libdir=/usr/lib64
+  args:
+    chdir: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}
+    creates: /usr/local/src/asterisk-{{ asterisk_latest.stdout }}/config.log
+  tags: configure
+
+- name: install startup script 
+  copy:
+    src: asterisk.system
+    dest: /usr/lib/systemd/system/asterisk.service
+
